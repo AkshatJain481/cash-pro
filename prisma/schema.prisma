@@ -1,0 +1,290 @@
+// Cash Pro database schema — CockroachDB.
+//
+// Conventions
+// - Tables, columns and enum types are snake_case in the database (@@map/@map).
+// - Every id is a random UUID. App tables use a composite primary key
+//   (user_id, id): a user's rows are stored together (CockroachDB range
+//   locality) and every read/write is naturally scoped to its owner.
+// - Money is DECIMAL(15,2), calendar days are DATE, wall-clock times are TIME.
+// - String length limits match LIMITS in lib/cash-pro/constants.ts.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "cockroachdb"
+}
+
+// ─── Auth (managed by Better Auth) ──────────────────────────────────────────
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false) @map("email_verified")
+  image         String?
+  /// Last time the user exported a backup (JSON, CSV, Gmail or share sheet).
+  lastBackupAt  DateTime? @map("last_backup_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  sessions     Session[]
+  accounts     Account[]
+  moneyEntries MoneyEntry[]
+  events       Event[]
+  tasks        Task[]
+  todos        Todo[]
+  assets       Asset[]
+  backupLogs   BackupLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  token     String   @unique
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(uuid()) @db.Uuid
+  userId                String    @map("user_id") @db.Uuid
+  /// Account id at the provider (Google `sub`).
+  accountId             String    @map("account_id")
+  /// Provider name, e.g. "google".
+  providerId            String    @map("provider_id")
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at") @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at") @db.Timestamptz(3)
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id @default(uuid()) @db.Uuid
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+// ─── Receipts & Payments ────────────────────────────────────────────────────
+
+enum EntryType {
+  INCOME
+  EXPENSE
+
+  @@map("entry_type")
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CARD
+  CHEQUE
+
+  @@map("payment_mode")
+}
+
+/// A receipt (INCOME) or payment (EXPENSE). Cash-mode entries drive the
+/// auto-synced "Cash Balance" asset.
+model MoneyEntry {
+  id        String      @default(uuid()) @db.Uuid
+  userId    String      @map("user_id") @db.Uuid
+  date      DateTime    @db.Date
+  type      EntryType
+  category  String      @db.String(100)
+  /// Always positive; `type` gives the direction.
+  amount    Decimal     @db.Decimal(15, 2)
+  mode      PaymentMode
+  narration String      @default("") @db.String(2000)
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, id])
+  @@index([userId, date])
+  @@map("money_entries")
+}
+
+// ─── Calendar ───────────────────────────────────────────────────────────────
+
+model Event {
+  id        String   @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  title     String   @db.String(200)
+  date      DateTime @db.Date
+  /// Local wall-clock start time.
+  time      DateTime @db.Time(0)
+  notes     String   @default("") @db.String(2000)
+  /// The "1 hour before" reminder has already been shown.
+  alerted   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, id])
+  @@index([userId, date])
+  @@map("events")
+}
+
+// ─── Tasks & To-dos ─────────────────────────────────────────────────────────
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  BLOCKED
+
+  @@map("task_status")
+}
+
+enum TaskPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+
+  @@map("task_priority")
+}
+
+model Task {
+  id        String       @default(uuid()) @db.Uuid
+  userId    String       @map("user_id") @db.Uuid
+  title     String       @db.String(200)
+  dueDate   DateTime?    @map("due_date") @db.Date
+  priority  TaskPriority @default(MEDIUM)
+  status    TaskStatus   @default(PENDING)
+  assignee  String       @default("") @db.String(100)
+  /// Description / narration.
+  notes     String       @default("") @db.String(5000)
+  remarks   String       @default("") @db.String(2000)
+  /// The "due soon" reminder has already been shown.
+  alerted   Boolean      @default(false)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, id])
+  @@map("tasks")
+}
+
+enum TodoStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+
+  @@map("todo_status")
+}
+
+enum TodoPriority {
+  HIGH
+  MEDIUM
+  LOW
+
+  @@map("todo_priority")
+}
+
+model Todo {
+  id        String       @default(uuid()) @db.Uuid
+  userId    String       @map("user_id") @db.Uuid
+  title     String       @db.String(200)
+  status    TodoStatus   @default(PENDING)
+  priority  TodoPriority @default(MEDIUM)
+  remarks   String       @default("") @db.String(2000)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, id])
+  @@map("todos")
+}
+
+// ─── Assets & Liabilities ───────────────────────────────────────────────────
+
+enum AssetCategory {
+  BANK_ACCOUNT
+  FIXED_DEPOSIT
+  MUTUAL_FUND
+  STOCKS
+  PPF_EPF
+  REAL_ESTATE
+  GOLD_JEWELLERY
+  VEHICLES
+  CASH
+  LOAN_GIVEN
+  OTHER_ASSET
+  CREDIT_CARD_DUE
+  LOAN_TAKEN
+  OTHER_LIABILITY
+
+  @@map("asset_category")
+}
+
+/// Manually tracked assets and liabilities. The auto-synced cash balance is
+/// derived from cash-mode money entries and is not stored.
+model Asset {
+  id        String        @default(uuid()) @db.Uuid
+  userId    String        @map("user_id") @db.Uuid
+  name      String        @db.String(120)
+  /// Trimmed, lower-cased name: saving an asset with an existing name updates it.
+  nameKey   String        @map("name_key") @db.String(120)
+  category  AssetCategory
+  value     Decimal       @db.Decimal(15, 2)
+  notes     String        @default("") @db.String(500)
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, id])
+  @@unique([userId, nameKey])
+  @@map("assets")
+}
+
+// ─── Backups ────────────────────────────────────────────────────────────────
+
+model BackupLog {
+  id        String   @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  /// What was done, e.g. "📂 Downloaded JSON".
+  method    String   @db.String(200)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, id])
+  @@index([userId, createdAt])
+  @@map("backup_logs")
+}
