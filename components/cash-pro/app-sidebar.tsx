@@ -26,6 +26,7 @@ import { AccountMenuContent, UserAvatar } from "./account";
 import { BrandMark } from "./brand";
 import { SCREENS } from "./navigation";
 import { useCashPro } from "./store";
+import { useSidebarPeek } from "./use-sidebar-peek";
 
 type AppSidebarProps = {
   tab: Tab;
@@ -49,20 +50,33 @@ export function AppSidebar({ tab, onNavigate, onOpenSettings, onOpenSummary }: A
     }),
     [assets, money],
   );
+  const peek = useSidebarPeek();
+  const navigate = (next: Tab) => {
+    onNavigate(next);
+    peek.afterSelect();
+  };
+  const openSettings = () => {
+    peek.hide();
+    onOpenSettings();
+  };
+  const openSummary = () => {
+    peek.hide();
+    onOpenSummary();
+  };
   const badges: Partial<Record<Tab, number>> = {
     tasks: tasks.filter((task) => task.status !== "DONE").length,
     todo: todos.filter((todo) => todo.status !== "DONE").length,
   };
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" {...peek.handlers}>
       <SidebarHeader className="h-16 justify-center border-b border-sidebar-border">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
               tooltip="Cash Pro"
-              onClick={() => onNavigate("home")}
+              onClick={() => navigate("home")}
               className="h-11 hover:bg-transparent active:bg-transparent"
             >
               <BrandMark className="size-8 rounded-[10px]" />
@@ -84,7 +98,7 @@ export function AppSidebar({ tab, onNavigate, onOpenSettings, onOpenSummary }: A
                 <SidebarMenuButton
                   isActive={name === tab}
                   tooltip={label}
-                  onClick={() => onNavigate(name)}
+                  onClick={() => navigate(name)}
                   className={`${menuButton} data-active:bg-secondary data-active:font-semibold data-active:text-primary`}
                 >
                   <Icon />
@@ -104,13 +118,13 @@ export function AppSidebar({ tab, onNavigate, onOpenSettings, onOpenSummary }: A
           <SidebarGroupLabel className={groupLabel}>Tools</SidebarGroupLabel>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Daily Fund Summary" onClick={onOpenSummary} className={menuButton}>
+              <SidebarMenuButton tooltip="Daily Fund Summary" onClick={openSummary} className={menuButton}>
                 <ChartColumn />
                 <span>Daily Fund Summary</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Backup & Settings" onClick={onOpenSettings} className={menuButton}>
+              <SidebarMenuButton tooltip="Backup & Settings" onClick={openSettings} className={menuButton}>
                 <DatabaseBackup />
                 <span>Backup &amp; Settings</span>
               </SidebarMenuButton>
@@ -121,7 +135,7 @@ export function AppSidebar({ tab, onNavigate, onOpenSettings, onOpenSummary }: A
         <SidebarGroup className="mt-auto group-data-[collapsible=icon]:hidden">
           <button
             type="button"
-            onClick={() => onNavigate("assets")}
+            onClick={() => navigate("assets")}
             className="relative overflow-hidden rounded-2xl bg-linear-to-br from-hero-from to-hero-to p-4 text-left text-white outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
             <span aria-hidden className="pointer-events-none absolute -top-8 -right-6 size-24 rounded-full bg-white/7" />
@@ -139,7 +153,7 @@ export function AppSidebar({ tab, onNavigate, onOpenSettings, onOpenSummary }: A
       <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>
           <SidebarMenuItem>
-            <DropdownMenu modal={false}>
+            <DropdownMenu modal={false} onOpenChange={peek.hold}>
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton size="lg" className="h-12 data-open:bg-sidebar-accent">
                   <UserAvatar user={user} className="size-8" />
@@ -154,8 +168,8 @@ export function AppSidebar({ tab, onNavigate, onOpenSettings, onOpenSummary }: A
                 user={user}
                 side="right"
                 align="end"
-                onOpenSettings={onOpenSettings}
-                onOpenSummary={onOpenSummary}
+                onOpenSettings={openSettings}
+                onOpenSummary={openSummary}
               />
             </DropdownMenu>
           </SidebarMenuItem>
