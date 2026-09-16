@@ -14,7 +14,7 @@ import { TABS, type Tab } from "@/lib/cash-pro/tabs";
 import type { AppUser, Snapshot } from "@/lib/cash-pro/types";
 import { cn } from "@/lib/utils";
 
-import { AccountMenuContent, UserAvatar, useThemeToggle } from "./account";
+import { AccountMenuContent, UserAvatar, useAppTheme } from "./account";
 import { AppSidebar } from "./app-sidebar";
 import { BrandMark } from "./brand";
 import { useMounted, useNow } from "./hooks";
@@ -205,7 +205,7 @@ function DesktopHeader({ tab, onOpenSummary }: { tab: Tab; onOpenSummary: () => 
 }
 
 function ThemeToggle() {
-  const theme = useThemeToggle();
+  const theme = useAppTheme();
 
   return (
     <Button

@@ -42,12 +42,13 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { summarizeAssets, withCashAsset } from "@/lib/cash-pro/assets";
 import { parseAssetsCsv, readBackupHeader, type ImportedAsset } from "@/lib/cash-pro/backup";
 import { formatINR } from "@/lib/cash-pro/format";
 import { cn } from "@/lib/utils";
 
-import { UserAvatar, useSignOut, useThemeToggle } from "./account";
+import { THEME_OPTIONS, UserAvatar, useAppTheme, useSignOut, type ThemePreference } from "./account";
 import { useBackupTools } from "./backup-tools";
 import { toneSoft } from "./common";
 import { useCashPro, useCashProActions } from "./store";
@@ -98,7 +99,6 @@ function SettingsPanel({ close, onOpenSummary }: { close: () => void; onOpenSumm
   );
   const actions = useCashProActions();
   const tools = useBackupTools();
-  const theme = useThemeToggle();
   const { signOut, pending: signingOut } = useSignOut();
 
   const [gmail, setGmail] = useState(user.email);
@@ -295,13 +295,7 @@ function SettingsPanel({ close, onOpenSummary }: { close: () => void; onOpenSumm
         </Section>
 
         <Section title="App">
-          <ActionRow
-            icon={theme.dark ? Sun : Moon}
-            tile="bg-accent text-foreground"
-            title="Toggle Dark / Light Mode"
-            description="Switch app theme"
-            onClick={theme.toggle}
-          />
+          <ThemeRow />
           <ActionRow
             icon={CalendarPlus}
             tile={toneSoft.warning}
@@ -433,6 +427,46 @@ function Section({ title, action, children }: { title: string; action?: ReactNod
       </div>
       {children}
     </section>
+  );
+}
+
+function ThemeRow() {
+  const { preference, setPreference, dark } = useAppTheme();
+  const Icon = dark ? Moon : Sun;
+
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-muted/50 p-3">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent text-foreground">
+        <Icon className="size-[18px]" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13px] font-bold">Theme</span>
+        <span className="block truncate text-[11px] text-muted-foreground">
+          {preference === "system" ? "Matches your device" : `Always ${preference}`}
+        </span>
+      </span>
+      <ToggleGroup
+        type="single"
+        variant="outline"
+        size="sm"
+        spacing={0}
+        value={preference}
+        onValueChange={(value) => value && setPreference(value as ThemePreference)}
+        aria-label="Theme"
+      >
+        {THEME_OPTIONS.map(({ value, label, icon: OptionIcon }) => (
+          <ToggleGroupItem
+            key={value}
+            value={value}
+            aria-label={label}
+            title={label}
+            className="px-2.5 data-[state=on]:bg-secondary data-[state=on]:text-primary"
+          >
+            <OptionIcon />
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </div>
   );
 }
 

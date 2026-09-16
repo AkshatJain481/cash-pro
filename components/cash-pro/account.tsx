@@ -1,6 +1,6 @@
 "use client";
 
-import { ChartColumn, DatabaseBackup, LogOut, Moon, Sun } from "lucide-react";
+import { ChartColumn, DatabaseBackup, LogOut, Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useState, type ComponentProps } from "react";
 
@@ -10,7 +10,12 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth-client";
 import type { AppUser } from "@/lib/cash-pro/types";
@@ -57,10 +62,24 @@ export function useSignOut() {
   return { signOut, pending };
 }
 
-export function useThemeToggle() {
-  const { resolvedTheme, setTheme } = useTheme();
+export const THEME_OPTIONS = [
+  { value: "system", label: "System", icon: Monitor },
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: Moon },
+] as const;
+
+export type ThemePreference = (typeof THEME_OPTIONS)[number]["value"];
+
+/** The theme follows the device until the user picks light or dark. */
+export function useAppTheme() {
+  const { theme, resolvedTheme, setTheme } = useTheme();
   const dark = resolvedTheme === "dark";
-  return { dark, toggle: () => setTheme(dark ? "light" : "dark") };
+  return {
+    preference: (theme ?? "system") as ThemePreference,
+    setPreference: (value: ThemePreference) => setTheme(value),
+    dark,
+    toggle: () => setTheme(dark ? "light" : "dark"),
+  };
 }
 
 type AccountMenuContentProps = {
@@ -78,7 +97,7 @@ export function AccountMenuContent({
   align = "end",
 }: AccountMenuContentProps) {
   const { signOut } = useSignOut();
-  const theme = useThemeToggle();
+  const theme = useAppTheme();
 
   return (
     <DropdownMenuContent side={side} align={align} sideOffset={8} className="w-64">
@@ -101,15 +120,25 @@ export function AccountMenuContent({
           <ChartColumn />
           Daily fund summary
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.preventDefault();
-            theme.toggle();
-          }}
-        >
-          {theme.dark ? <Sun /> : <Moon />}
-          {theme.dark ? "Light mode" : "Dark mode"}
-        </DropdownMenuItem>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            {theme.dark ? <Moon /> : <Sun />}
+            Theme
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="min-w-40">
+            <DropdownMenuRadioGroup
+              value={theme.preference}
+              onValueChange={(value) => theme.setPreference(value as ThemePreference)}
+            >
+              {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+                <DropdownMenuRadioItem key={value} value={value} onSelect={(event) => event.preventDefault()}>
+                  <Icon />
+                  {label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
       <DropdownMenuItem variant="destructive" onSelect={() => void signOut()}>
